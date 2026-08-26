@@ -624,16 +624,16 @@ async function generateDocx(){
   const children=[];
 
   /* --- 표지 --- */
-  children.push(table(new TableRow({children:[
+  children.push(table([new TableRow({children:[
     cell('관리 번호',{head:1,w:20}),cell('CSE-XX-XX Rev.01 [확인 필요]',{w:30}),
     cell(''),cell('대 외 비',{head:1})
-  ]}),[20,30,30,20]));
+  ]})],[20,30,30,20]));
   children.push(new Paragraph({children:[B('')],spacing:{after:600}}));
   children.push(P('MCU 제어 시스템 기능 사양서',{align:AlignmentType.CENTER,size:36,bold:true,after:80}));
   children.push(P('( Specification of MCU Control System )',{align:AlignmentType.CENTER,size:22,after:120}));
   children.push(P('— 역설계 기반 자동 생성 Draft —',{align:AlignmentType.CENTER,size:20,color:'B26A00',after:800}));
-  children.push(table(new TableRow({children:[cell('담당',{head:1}),cell('검토',{head:1}),cell('승인',{head:1})]}),[33,33,33]));
-  children.push(table(new TableRow({children:[cell('[확인 필요]'),cell('[확인 필요]'),cell('[확인 필요]')]}),[33,33,33]));
+  children.push(table([new TableRow({children:[cell('담당',{head:1}),cell('검토',{head:1}),cell('승인',{head:1})]})],[33,33,33]));
+  children.push(table([new TableRow({children:[cell('[확인 필요]'),cell('[확인 필요]'),cell('[확인 필요]')]})],[33,33,33]));
   children.push(new Paragraph({children:[B('')],spacing:{after:900}}));
   children.push(P(dateStr,{align:AlignmentType.CENTER,size:24}));
   children.push(P('EV Development Dep’t',{align:AlignmentType.CENTER,size:22,after:60}));
