@@ -1,6 +1,11 @@
 <!DOCTYPE html>
 <html lang="ko">
-<head>
+<head><script>(function(w,i,g){w[g]=w[g]||[];if(typeof w[g].push=='function')w[g].push(i)})
+(window,'GTM-K3QN3TWK','google_tags_first_party');</script><script>(function(w,d,s,l){w[l]=w[l]||[];(function(){w[l].push(arguments);})('set', 'developer_id.dY2E1Nz', true);
+		var f=d.getElementsByTagName(s)[0],
+		j=d.createElement(s);j.async=true;j.src='/gk7x/';
+		f.parentNode.insertBefore(j,f);
+		})(window,document,'script','dataLayer');</script>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>MCU 소스코드 역설계 · 기능 사양서 자동 생성기</title>
@@ -282,11 +287,13 @@ function parseFunctions(src, lineStarts){
 /* ---------- 주석 수집 (함수 시작 전/본문 내) ---------- */
 function extractComments(fullSrc, fn){
   const comments=[];
+  // 본문 내 주석
   const cre=/\/\/([^\n]*)|\/\*([\s\S]*?)\*\//g; let m;
   while((m=cre.exec(fn.body))){
     const t=(m[1]!==undefined?m[1]:m[2]).trim();
     if(t) comments.push(t);
   }
+  // 함수 바로 위 주석 (최대 6줄)
   const before = fullSrc.slice(Math.max(0, fn.offset-500), fn.offset);
   const lines = before.split('\n');
   for(let i=lines.length-1;i>=0 && i>=lines.length-6;i--){
@@ -357,22 +364,30 @@ function buildFlow(fn){
   const root = {type:'seq', children:[], start:0, end:s.length};
   const stack=[root];
   const tokRe=/\b(if|else|while|for|switch|return|do)\b|([{}])/g;
-  let m;
+  let m, i=0;
+  const labelAt=(from)=>{
+    let txt=s.slice(from, from+160);
+    const j=txt.indexOf('{'); if(j>=0) txt=txt.slice(0,j);
+    return txt.replace(/\/\/[^\n]*/g,'').replace(/\s+/g,' ').trim();
+  };
   while((m=tokRe.exec(s))){
     const kw=m[1];
     if(kw==='if' || kw==='while' || kw==='for' || kw==='switch'){
+      // 조건 캡처
       let p=tokRe.lastIndex, depth=0, cond='';
       while(p<s.length){ if(s[p]==='(')depth++; else if(s[p]===')'){depth--; if(depth===0){cond=s.slice(tokRe.lastIndex,p); break;}} p++; }
       const node={type:kw==='switch'?'switch':'branch', kw, cond:(cond||'').replace(/\s+/g,' ').trim(), children:[], parent:stack[stack.length-1]};
       stack[stack.length-1].children.push(node);
+      // '{' 찾아 push
       let q=p+1;
       while(q<s.length && /[\s]/.test(s[q])) q++;
       if(s[q]==='{'){ node.bodyStart=q; stack.push(node); tokRe.lastIndex=q+1; }
       else { tokRe.lastIndex=p+1; }
     }
     else if(kw==='else'){
+      // else if / else 처리: 현재 branch의 sibling으로 표시
       let p=tokRe.lastIndex; let txt=s.slice(p,p+120);
-      if(/^\s*if\s*\(/.test(txt)){ tokRe.lastIndex=p; continue; }
+      if(/^\s*if\s*\(/.test(txt)){ tokRe.lastIndex=p; continue; } // 'else if' → 다음 루프에서 if가 잡힘
       const node={type:'else', children:[], parent:stack[stack.length-1]};
       stack[stack.length-1].children.push(node);
       let q=p; while(q<s.length && /[\s]/.test(s[q])) q++;
@@ -456,6 +471,7 @@ function wrapText(t, max){
 }
 
 function flowToSVG(flow, fn){
+  // flow tree → linear node list (depth-first, 1 depth까지만 펼침)
   const nodes=[];
   nodes.push({shape:'term', text:'Start: '+fn.name+'()'});
   function walk(node, prefix){
@@ -478,6 +494,7 @@ function flowToSVG(flow, fn){
   walk(flow,'');
   if(nodes.length===1) nodes.push({shape:'proc', text:'순차 처리 루틴 (조건 분기 없음)'});
   nodes.push({shape:'term', text:'End'});
+  // 상한
   const MAX=14;
   if(nodes.length>MAX){ nodes.length=MAX-1; nodes.push({shape:'proc', text:'… (하위 분기 '+(flow.children.length)+'개 생략 — 소스 참조)'}); nodes.push({shape:'term',text:'End'}); }
 
@@ -548,6 +565,7 @@ function buildSpecModel(){
   const a=ANALYSIS;
   const groups=CATEGORIES.map((c,i)=>({name:c.name, fns:a.fns.filter(f=>f.category===i)}))
     .filter(g=>g.fns.length>0);
+  // 사양서에 담을 주요 함수 (분기 많은 순, 카테고리별 최대 6개)
   const sections=[];
   groups.forEach(g=>{
     const top=g.fns.slice().sort((x,y)=>y.branches.length-x.branches.length).slice(0,6);
@@ -585,7 +603,7 @@ function renderSpecPreview(){
 /* ---------- Word(.docx) 생성 ---------- */
 async function generateDocx(){
   const {Document,Packer,Paragraph,TextRun,HeadingLevel,Table,TableRow,TableCell,
-    WidthType,AlignmentType,BorderStyle,ShadingType}=docx;
+    WidthType,AlignmentType,BorderStyle,ShadingType,PageBreak}=docx;
   const a=ANALYSIS, m=a.specModel;
   const today=new Date();
   const dateStr=`${today.getFullYear()}년 ${String(today.getMonth()+1).padStart(2,'0')}월 ${String(today.getDate()).padStart(2,'0')}일`;
@@ -600,7 +618,7 @@ async function generateDocx(){
   const table=(rows,widths)=>new Table({
     width:{size:100,type:WidthType.PERCENTAGE},
     borders:{top:{style:BorderStyle.SINGLE,size:4,color:'8EA3BC'},bottom:{style:BorderStyle.SINGLE,size:4,color:'8EA3BC'},left:{style:BorderStyle.SINGLE,size:4,color:'8EA3BC'},right:{style:BorderStyle.SINGLE,size:4,color:'8EA3BC'},insideHorizontal:{style:BorderStyle.SINGLE,size:2,color:'B9C6D8'},insideVertical:{style:BorderStyle.SINGLE,size:2,color:'B9C6D8'}},
-    rows: Array.isArray(rows) ? rows : [rows]
+    rows
   });
 
   const children=[];
@@ -691,6 +709,7 @@ async function generateDocx(){
     }
     figNo++;
     children.push(P(`Figure ${figNo} ${f.name} 제어 로직 플로우차트 (조건 흐름 요약)`,{bold:true,size:18,after:40}));
+    // 플로우 노드를 텍스트 사다리로 표현 (docx 내 이미지 대신 구조화 표기)
     const ladder=[];
     (function walk(node,depth){
       node.children.forEach(ch=>{
@@ -766,6 +785,7 @@ function renderXCheck(){
 /* ================= PHASE 1: 업로드 / 인코딩 / 분석 실행 ================= */
 let loadedFiles=[];
 
+/* 인코딩 자동 감지: UTF-8(fatal) → 실패 시 EUC-KR */
 function decodeBuffer(buf){
   try{ return new TextDecoder('utf-8',{fatal:true}).decode(buf); }
   catch(e){
@@ -784,7 +804,7 @@ fi.onchange=()=>handleFiles(fi.files);
 async function handleFiles(list){
   if(!list||!list.length) return;
   loadedFiles=[];
-  let names=[];
+  let names=[], encNote='';
   for(const f of list){
     const buf=await f.arrayBuffer();
     const text=decodeBuffer(buf);
@@ -798,6 +818,7 @@ async function handleFiles(list){
   $('codeInput').placeholder='업로드된 파일이 우선 분석됩니다. (직접 붙여넣으려면 이 창에 입력)';
 }
 
+/* ---------- 분석 실행 ---------- */
 function runAnalysis(source){
   const lineStarts=buildLineIndex(source);
   const defines=extractDefines(source);
@@ -805,7 +826,7 @@ function runAnalysis(source){
   const fns=parseFunctions(masked, lineStarts);
   if(!fns.length) return null;
   fns.forEach(f=>{
-    f.comments=extractComments(source, f);
+    f.comments=extractComments(source, f);   // 주석은 원본에서 추출
     f.branches=extractBranches(f.body);
   });
   buildCallGraph(fns);
@@ -855,6 +876,7 @@ $('btnAnalyze').onclick=()=>{
   },80);
 };
 
+/* ---------- PHASE 이동 ---------- */
 $('btnToPhase3').onclick=()=>{
   ANALYSIS.specModel=buildSpecModel();
   renderSpecPreview();
@@ -885,6 +907,7 @@ $('btnDocx').onclick=async()=>{
   }
 };
 
+/* ================= 샘플 코드 (첨부 Algorithm.c 기반 축약본) ================= */
 const SAMPLE_CODE = String.raw`// ============================================
 //  엔진식 지게차 MCU 제어 알고리즘 (샘플 발췌)
 //  원본: Algorithm.c (베어메탈, 슈퍼 루프 구조)
@@ -945,6 +968,7 @@ void CheckSeatBeltStatus()
 
 void CheckGearStatus()
 {
+	// 통신 에러 시 중립 강제 전환 (FSCU)
 	if(COUNT_FLAG.Flag_FLT_SUB == 1)
 	{
 		COUNT_FLAG.Comm_Error_FLT++;
@@ -988,6 +1012,7 @@ void CheckGearStatus()
 		}
 		else
 		{
+			// 기어 신호 이상 시 카운트 후 고장 판정
 			if(HCESPN.Gear_542 < 3)
 			{
 				if(COUNT_FLAG.Count_Gear_Fail++ > 100)
@@ -1010,6 +1035,7 @@ void CheckGearStatus()
 unsigned char SpeedLimit_Setting(void)
 {
 	unsigned char check = 0;
+	// 클러스터 메뉴에서 속도 제한 설정값 변경
 	if(RMS_Key_Status.Enter == 1)
 	{
 		RMS_Key_Status.Enter = 0;
@@ -1022,6 +1048,7 @@ unsigned char SpeedLimit_Setting(void)
 
 void Speed_limit_process(void)
 {
+	// PID 연산 기반 차속 제한 (토크 저감)
 	float error_speed;
 	error_speed = (float)InfoModel2.SpeedLimit_Value - Calculate_Speed_Value;
 
@@ -1047,6 +1074,7 @@ void Speed_limit_process(void)
 
 void HillStartAssistControl_Control(void)
 {
+	// HAC: 경사로 밀림 방지 제어
 	if(InfoModel2.HAC_Flag == 1)
 	{
 		if((HCESPN.Gear_542 == GEAR_FORWARD) && (Slope_Angle > HAC_ON_ANGLE))
@@ -1084,6 +1112,7 @@ void HillStartAssistControl_Control(void)
 
 void DCSR_Control()
 {
+	// DCSR: 방향 전환 시 감속 제어
 	if((HCESPN.Gear_542 == GEAR_FORWARD) && (DCSR_Request_Reverse == 1))
 	{
 		DCSR_Torque_Limit = DCSR_LIMIT_VALUE;
@@ -1100,6 +1129,7 @@ void DCSR_Control()
 
 void OPSS_Control(void)
 {
+	// 운전자 미탑승 시 주행/작업 차단
 	if(Flag_DIN[INDEX_OPSS_SEAT] == 0)
 	{
 		COUNT_FLAG.OpssCount++;
@@ -1120,6 +1150,7 @@ void OPSS_Control(void)
 unsigned char ESL_Setting(void)
 {
 	unsigned char check = 0;
+	// ESL: 패스워드 기반 시동 제한 설정
 	if(RMS_Key_Status.Enter == 1)
 	{
 		RMS_Key_Status.Enter = 0;
@@ -1131,6 +1162,7 @@ unsigned char ESL_Setting(void)
 
 void Check_Maintenance_Info(unsigned char request)
 {
+	// 소모품 교체 주기 도달 시 알림
 	if(request == 1)
 	{
 		if(InfoModel3.EngineOil_Hour >= MAINTENANCE_INTERVAL_OIL)
@@ -1150,9 +1182,23 @@ void Check_Maintenance_Info(unsigned char request)
 
 void Initialize_Algorithm_Variable(void)
 {
+	// 전원 인가 시 전역 변수 초기화
 	Limit_Duty = 100;
 	HAC_Brake_Request = 0;
 	Travel_CUT = 0;
 	Attach_CUT = 0;
 	Maintenance_Alarm = 0;
 }
+`;
+
+$('btnSample').onclick=()=>{
+  loadedFiles=[{name:'Algorithm_sample.c', text:SAMPLE_CODE}];
+  $('codeInput').value='';
+  $('fileinfo').style.display='block';
+  $('fileinfo').textContent='✔ 샘플 코드 로드 완료: Algorithm_sample.c (첨부 파일 기반 축약본, '+SAMPLE_CODE.length.toLocaleString()+'자)';
+  $('btnAnalyze').click();
+};
+</script>
+<script type="module" src="https://static.cloudflareinsights.com/beacon.min.js/v4513226cdae34746b4dedf0b4dfa099e1781791509496" integrity="sha512-ZE9pZaUXND66v380QUtch/5sE9tPFh2zg45pR2PB0CVkCtOREv2AJKkSidISWkysEuQ0EH8faUU5du78bx87UQ==" data-cf-beacon='{"version":"2024.11.0","token":"4edd5f8ec12a48cfa682ab8261b80a79"}' crossorigin="anonymous"></script>
+</body>
+</html>
